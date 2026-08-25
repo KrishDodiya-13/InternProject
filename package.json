@@ -1,0 +1,39 @@
+{
+  "name": "document-vault-api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Document Vault GraphQL API - organize documents into collections",
+  "type": "module",
+  "module": "src/index.ts",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "start": "bun run src/index.ts",
+    "build": "bun build src/index.ts --target bun --outdir dist",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "test:unit": "bun test tests/unit",
+    "test:integration": "bun test tests/integration",
+    "test:watch": "bun test --watch",
+    "gendb": "bun run scripts/wait-for-db.ts && bun --bun run prisma migrate deploy && bun --bun run prisma generate",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "db:migrate": "bun --bun run prisma migrate dev",
+    "db:reset": "bun --bun run prisma migrate reset --force",
+    "db:status": "bun --bun run prisma migrate status",
+    "db:studio": "bun --bun run prisma studio",
+    "db:wait": "bun run scripts/wait-for-db.ts"
+  },
+  "dependencies": {
+    "@graphql-tools/schema": "^10.1.0",
+    "@graphql-tools/utils": "^12.0.0",
+    "@prisma/adapter-pg": "^7.9.1",
+    "@prisma/client": "^7.9.1",
+    "graphql": "^17.0.2",
+    "graphql-yoga": "^5.22.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.0",
+    "prisma": "^7.9.1",
+    "typescript": "^7.0.2"
+  }
+}
