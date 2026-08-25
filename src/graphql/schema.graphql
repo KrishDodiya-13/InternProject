@@ -1,0 +1,216 @@
+# Document Vault GraphQL schema (schema-first).
+#
+# Nullability is deliberate throughout:
+#   `T!`  the API guarantees a value
+#   `T`   the value is genuinely optional or may legitimately be absent
+# Optional *input* fields mean "leave unchanged" or "no filter"; they are never
+# a way to smuggle nulls into required columns.
+
+"""
+An ISO-8601 date-time string, e.g. `2026-08-25T05:39:07.123Z`.
+"""
+scalar DateTime
+
+# ---------------------------------------------------------------------------
+# Object types
+# ---------------------------------------------------------------------------
+
+"""
+A named folder that documents are organised into.
+"""
+type Collection {
+  id: ID!
+  name: String!
+  """
+  URL-friendly identifier, unique across all collections.
+  """
+  slug: String!
+  createdAt: DateTime!
+  """
+  Every document in this collection, newest first. Always a list, empty when
+  the collection has no documents.
+  """
+  documents: [Document!]!
+}
+
+"""
+A single document belonging to exactly one collection.
+"""
+type Document {
+  id: ID!
+  title: String!
+  content: String!
+  """
+  Free-form labels. Always a list, empty when the document has no tags.
+  """
+  tags: [String!]!
+  """
+  The collection this document currently belongs to. A document is never
+  orphaned, so this is always present.
+  """
+  collectionId: ID!
+  isArchived: Boolean!
+  createdAt: DateTime!
+}
+
+# ---------------------------------------------------------------------------
+# Pagination
+# ---------------------------------------------------------------------------
+
+"""
+One page of documents produced by cursor-based pagination.
+"""
+type DocumentPage {
+  """
+  The documents in this page, in a stable order. Empty when nothing matched.
+  """
+  nodes: [Document!]!
+  """
+  Cursor to pass as `cursor` to fetch the next page, or `null` when this is
+  the last page. Its presence is the only reliable "has more" signal.
+  """
+  nextCursor: String
+}
+
+# ---------------------------------------------------------------------------
+# Inputs
+# ---------------------------------------------------------------------------
+
+"""
+Filters for the `documents` query. Every field is optional; omitting a field
+means "do not filter on it". Omitting the whole input returns all documents.
+"""
+input DocumentFilterInput {
+  """
+  Restrict results to a single collection.
+  """
+  collectionId: ID
+  """
+  Case-insensitive substring match against the title OR the content.
+  """
+  search: String
+  """
+  `true` returns only archived documents, `false` only unarchived ones.
+  Omit to return both.
+  """
+  isArchived: Boolean
+}
+
+input CreateCollectionInput {
+  """
+  Human-readable name. Must not be empty or whitespace only.
+  """
+  name: String!
+  """
+  Lowercase letters, digits and single hyphens, e.g. `design-docs`.
+  Must be unique across all collections.
+  """
+  slug: String!
+}
+
+input CreateDocumentInput {
+  """
+  Must not be empty or whitespace only.
+  """
+  title: String!
+  """
+  Must not be empty or whitespace only.
+  """
+  content: String!
+  """
+  Must reference an existing collection.
+  """
+  collectionId: ID!
+  """
+  Defaults to an empty list when omitted.
+  """
+  tags: [String!]
+  """
+  Defaults to `false` when omitted.
+  """
+  isArchived: Boolean
+}
+
+"""
+Fields to change on an existing document. Every field is optional; an omitted
+field is left unchanged. At least one field must be provided.
+"""
+input UpdateDocumentInput {
+  title: String
+  content: String
+  tags: [String!]
+  isArchived: Boolean
+}
+
+# ---------------------------------------------------------------------------
+# Payloads
+# ---------------------------------------------------------------------------
+
+"""
+Result of deleting a document. The id is echoed back so clients can evict the
+record from their cache.
+"""
+type DeleteDocumentPayload {
+  id: ID!
+  deleted: Boolean!
+}
+
+# ---------------------------------------------------------------------------
+# Operations
+# ---------------------------------------------------------------------------
+
+type Query {
+  """
+  Every collection, newest first.
+  """
+  collections: [Collection!]!
+
+  """
+  A single collection together with its nested documents.
+  Errors with `NOT_FOUND` when no collection has the given id.
+  """
+  collection(id: ID!): Collection!
+
+  """
+  Documents matching the given filters, one page at a time.
+
+  Pagination is cursor-based (keyset, never offset): `take` is the page size
+  and `cursor` is the opaque `nextCursor` returned by the previous page. Omit
+  `cursor` for the first page and keep following `nextCursor` until it is
+  null. `take` must be a positive integer within the server's limit.
+
+  Cursors are opaque tokens - do not parse or construct them. Results are
+  ordered by `createdAt` descending with `id` as a tie-breaker, so pages never
+  duplicate or skip a document even when timestamps collide.
+  """
+  documents(filter: DocumentFilterInput, take: Int, cursor: String): DocumentPage!
+}
+
+type Mutation {
+  """
+  Creates a collection. Errors with `CONFLICT` when the slug is already taken.
+  """
+  createCollection(input: CreateCollectionInput!): Collection!
+
+  """
+  Creates a document inside an existing collection.
+  Errors with `NOT_FOUND` when the target collection does not exist.
+  """
+  createDocument(input: CreateDocumentInput!): Document!
+
+  """
+  Updates the supplied fields of a document, leaving the rest unchanged.
+  """
+  updateDocument(id: ID!, input: UpdateDocumentInput!): Document!
+
+  """
+  Permanently deletes a document.
+  """
+  deleteDocument(id: ID!): DeleteDocumentPayload!
+
+  """
+  Moves a document into a different collection. Errors with `NOT_FOUND` when
+  either the document or the target collection does not exist.
+  """
+  moveDocument(id: ID!, collectionId: ID!): Document!
+}

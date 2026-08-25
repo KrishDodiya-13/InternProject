@@ -1,0 +1,57 @@
+// Document Vault - Prisma schema.
+//
+// Two models: a Collection owns many Documents. Everything the API needs is
+// expressed here; the SQL is produced exclusively by `prisma migrate dev`.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// A named folder that documents are organised into.
+model Collection {
+  id        String   @id @default(uuid())
+  name      String
+  /// URL-friendly identifier, unique across all collections.
+  /// The unique constraint also backs slug lookups with an index.
+  slug      String   @unique
+  createdAt DateTime @default(now())
+
+  documents Document[]
+
+  @@map("collections")
+}
+
+/// A single document belonging to exactly one collection.
+model Document {
+  id           String   @id @default(uuid())
+  title        String
+  content      String
+  /// Stored as a PostgreSQL text[] column.
+  tags         String[] @default([])
+  collectionId String
+  isArchived   Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  // Restrict, not Cascade: a vault should never lose documents as a silent
+  // side effect of removing a collection. The collection must be emptied
+  // first. Updates cascade so an id change would follow the parent.
+  collection Collection @relation(fields: [collectionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  // Index strategy for the `documents` query, which filters on any
+  // combination of collectionId + isArchived and always orders by
+  // (createdAt, id) for cursor pagination.
+  //
+  // Leading-column rule means the composite index below also serves queries
+  // that filter on collectionId alone.
+  @@index([collectionId, isArchived, createdAt])
+  // Archived filter without a collection filter, ordered.
+  @@index([isArchived, createdAt])
+  // Unfiltered listing, ordered.
+  @@index([createdAt])
+  @@map("documents")
+}
